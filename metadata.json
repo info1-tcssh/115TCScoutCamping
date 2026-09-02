@@ -1,0 +1,6 @@
+{
+  "name": "第41屆行義蘭姐童軍專科考驗暨聯團露營報名系統",
+  "description": "臺中市第41屆行義蘭姐童軍專科考驗暨聯團露營報名及檔案上傳系統，支援 Google 帳號身份驗證除錯、學校代表註冊、四項資料上傳與管理員總表日誌。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "admins": {
+      "title": "Admins",
+      "description": "Authorized admin accounts",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "addedAt": { "type": "string" },
+        "addedBy": { "type": "string" }
+      },
+      "required": ["email", "name", "addedAt", "addedBy"]
+    },
+    "users": {
+      "title": "Users",
+      "description": "Registered school representative user records",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "user_name": { "type": "string" },
+        "school_id": { "type": "string" },
+        "school_name": { "type": "string" },
+        "user_phone": { "type": "string" },
+        "user_email": { "type": "string" },
+        "user_type": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["user_id", "user_name", "school_id", "school_name", "user_email"]
+    },
+    "schoolFiles": {
+      "title": "SchoolFiles",
+      "description": "Uploaded file records for schools",
+      "type": "object",
+      "properties": {
+        "school_id": { "type": "string" },
+        "slotKey": { "type": "string" },
+        "name": { "type": "string" },
+        "url": { "type": "string" },
+        "time": { "type": "string" },
+        "size": { "type": "number" },
+        "isDead": { "type": "boolean" },
+        "uploadedByEmail": { "type": "string" }
+      },
+      "required": ["school_id", "slotKey", "name", "time", "isDead"]
+    },
+    "auditLogs": {
+      "title": "AuditLogs",
+      "description": "Audit log entries",
+      "type": "object",
+      "properties": {
+        "time": { "type": "string" },
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "schoolName": { "type": "string" },
+        "actionType": { "type": "string" },
+        "detail": { "type": "string" }
+      },
+      "required": ["time", "email", "actionType", "detail"]
+    }
+  }
+}
