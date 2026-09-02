@@ -66,7 +66,7 @@ export default function App() {
       <footer className="bg-slate-900 text-slate-400 text-xs py-6 border-t border-slate-800 text-center">
         <div className="max-w-7xl mx-auto px-4 space-y-1">
           <p className="font-medium text-slate-300">
-            臺中市第41屆行義蘭姐童軍專科考驗暨聯團露營報名與檔案繳交系統 (AI Studio 發布版)
+            臺中市第41屆行義蘭姐童軍專科考驗暨聯團露營報名與檔案繳交系統
           </p>
           <p className="text-slate-500">
             主辦單位：臺中市立臺中第二高級中等學校學務處社團組 | 電話：04-22021521#1340、1341

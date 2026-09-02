@@ -32,7 +32,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
                 臺中市第41屆行義蘭姐童軍專科考驗暨聯團露營報名系統
               </h1>
               <p className="text-xs text-slate-400 mt-0.5">
-                主辦單位：臺中市立臺中第二高級中等學校社團組 | 全區 55 所學校線上報名與檔案繳交平台
+                主辦單位：臺中市立臺中第二高級中等學校社團組
               </p>
             </div>
           </div>

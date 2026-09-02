@@ -11,7 +11,7 @@ import {
   initSeedData, getUserByEmail, registerUser, isSchoolRegistered, getSchoolFiles, getAllSchoolFilesWithDead,
   getSchoolSlotFile, saveSchoolFile, deleteSchoolFile, markSchoolFileDead, getAllFilesMap, getUsers, getAuditLogs, addAuditLog, isAdmin,
   getCurrentAuthSession, setCurrentAuthSession, subscribeDataChanges, purgeAllUserData,
-  updateUserProfile, deleteUserAccount, getTemplateItems, getUploadSlots, deriveDownloadUrl
+  updateUserProfile, deleteUserAccount, getTemplateItems, getUploadSlots, deriveDownloadUrl, parseLogTimestamp
 } from '../services/storageService';
 import {
   getDriveAccessToken,
@@ -959,9 +959,12 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
     const matchAct = !logActionFilter || l.actionType === logActionFilter;
     return matchKw && matchAct;
   }).sort((a, b) => {
-    const tA = new Date(a.time).getTime();
-    const tB = new Date(b.time).getTime();
-    return logSortOrder === 'desc' ? tB - tA : tA - tB;
+    const tA = parseLogTimestamp(a.time, a.id);
+    const tB = parseLogTimestamp(b.time, b.id);
+    if (tA && tB && tA !== tB) {
+      return logSortOrder === 'desc' ? tB - tA : tA - tB;
+    }
+    return logSortOrder === 'desc' ? (b.id || '').localeCompare(a.id || '') : (a.id || '').localeCompare(b.id || '');
   });
 
   // Export Dashboard to CSV/Excel format

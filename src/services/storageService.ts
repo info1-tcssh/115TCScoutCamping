@@ -334,9 +334,9 @@ export function initSeedData() {
       });
       // Safe Sort by time desc
       list.sort((a, b) => {
-        const timeA = new Date(a.time).getTime();
-        const timeB = new Date(b.time).getTime();
-        if (!isNaN(timeA) && !isNaN(timeB)) {
+        const timeA = parseLogTimestamp(a.time, a.id);
+        const timeB = parseLogTimestamp(b.time, b.id);
+        if (timeA && timeB && timeA !== timeB) {
           return timeB - timeA;
         }
         return (b.id || '').localeCompare(a.id || '');
@@ -861,44 +861,57 @@ export async function saveSchoolFile(
   return { success: true };
 }
 
+export function parseLogTimestamp(timeStr?: string, idStr?: string): number {
+  if (idStr && idStr.startsWith('log_')) {
+    const parts = idStr.split('_');
+    const ts = parseInt(parts[1], 10);
+    if (!isNaN(ts) && ts > 1000000000000) return ts;
+  }
+  if (timeStr) {
+    const parsed = Date.parse(timeStr.replace(/\//g, '-'));
+    if (!isNaN(parsed)) return parsed;
+  }
+  return 0;
+}
+
 export async function deleteSchoolFile(
   school_id: string,
   slotKey: string,
   user: { email: string; name: string; schoolName: string; userId: string },
   isAdminAction: boolean = false
 ): Promise<{ success: boolean; message?: string }> {
-  if (cachedFiles[school_id] && cachedFiles[school_id][slotKey]) {
-    const target = cachedFiles[school_id][slotKey];
+  const target = cachedFiles[school_id]?.[slotKey];
+  const targetName = target?.name || `欄位 [${slotKey}] 檔案`;
 
-    // Firestore deleteDoc with STRICT CLOUD VERIFICATION
-    const docId = `${school_id}_${slotKey}`;
-    if (db) {
-      try {
-        await deleteDoc(doc(db, 'schoolFiles', docId));
-      } catch (e: any) {
-        console.error('Firestore deleteSchoolFile error:', e);
-        return { success: false, message: `雲端資料庫檔案刪除失敗：${e.message || e}` };
-      }
+  // Firestore deleteDoc with STRICT CLOUD VERIFICATION
+  const docId = `${school_id}_${slotKey}`;
+  if (db) {
+    try {
+      await deleteDoc(doc(db, 'schoolFiles', docId));
+    } catch (e: any) {
+      console.error('Firestore deleteSchoolFile error:', e);
+      return { success: false, message: `雲端資料庫檔案刪除失敗：${e.message || e}` };
     }
+  }
 
+  if (cachedFiles[school_id]) {
     delete cachedFiles[school_id][slotKey];
     safeSaveFilesStorage(cachedFiles);
-
-    addAuditLog({
-      time: new Date().toLocaleString('zh-TW', { hour12: false }),
-      userId: user.userId,
-      email: user.email,
-      schoolName: user.schoolName,
-      actionType: 'DELETE',
-      detail: isAdminAction
-        ? `大會管理員徹底刪除學校 [${user.schoolName}] 的檔案 [${target.name}]`
-        : `學校代表自行刪除檔案 [${target.name}]`,
-    });
-
-    notifySubscribers();
-    return { success: true };
   }
-  return { success: false, message: '找不到欲刪除的檔案' };
+
+  addAuditLog({
+    time: new Date().toLocaleString('zh-TW', { hour12: false }),
+    userId: user.userId || 'USER',
+    email: user.email,
+    schoolName: user.schoolName,
+    actionType: 'DELETE',
+    detail: isAdminAction
+      ? `大會管理員徹底刪除學校 [${user.schoolName}] 的檔案 [${targetName}]`
+      : `學校代表自行刪除檔案 [${targetName}]`,
+  });
+
+  notifySubscribers();
+  return { success: true };
 }
 
 export async function markSchoolFileDead(
