@@ -255,7 +255,7 @@ export const UserRegisterView: React.FC<UserRegisterViewProps> = ({
           <div className="relative" ref={dropdownRef}>
             <label className="flex items-center space-x-2 text-sm font-bold text-slate-800 mb-2">
               <School className="w-4 h-4 text-emerald-600" />
-              <span>代表學校名稱 (全區 55 所高國中) <span className="text-rose-500">*</span></span>
+              <span>代表學校名稱 (全區 {SCHOOLS.length} 所高中職) <span className="text-rose-500">*</span></span>
             </label>
             
             <div className="relative">
@@ -301,7 +301,8 @@ export const UserRegisterView: React.FC<UserRegisterViewProps> = ({
                 {filteredSchools.length > 0 ? (
                   filteredSchools.map((school) => {
                     const status = isSchoolRegistered(school.school_id);
-                    const isDisabled = status.registered && school.school_id !== '55';
+                    const isExemptSchool = school.school_id === '52' || school.school_id === '55';
+                    const isDisabled = status.registered && !isExemptSchool;
                     const isSelected = school.school_id === selectedSchoolId;
 
                     return (

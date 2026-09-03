@@ -814,15 +814,20 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
       // Clear file selection inputs
       setSelectedFiles({ form: null, stamp: null, cert: null, receipt: null });
 
+      const allFilesAfterUpload = fileSlots.filter(s => {
+        const f = getSchoolSlotFile(userRecord.school_id, s.key);
+        return f && !f.isDead;
+      }).length;
+
       if (hasDriveWarning) {
         setStatusMessage({
           type: 'warning',
-          text: `⚠️ 成功儲存 ${uploadedNames.length} 份檔案至大會系統資料庫！\n\n您的報名與檔案已安全存入大會雲端系統，大會後台已確實收到紀錄。`,
+          text: `⚠️ 本次成功儲存 ${uploadedNames.length} 份檔案至大會資料庫！貴校目前累計已完成 ${allFilesAfterUpload} / ${fileSlots.length} 份表件（先前已上傳之檔案均完好保存）。\n\n大會後台已確實收到檔案。`,
         });
       } else {
         setStatusMessage({
           type: 'success',
-          text: `🎉 成功完成 ${uploadedNames.length} 份檔案上傳！\n檔案已同步存至 Google 雲端硬碟與大會中央數據庫。`,
+          text: `🎉 本次成功完成 ${uploadedNames.length} 份檔案上傳！貴校目前累計已完成 ${allFilesAfterUpload} / ${fileSlots.length} 份表件（先前已上傳之檔案均完好保存，不會被覆蓋）。\n檔案已同步存至 Google 雲端硬碟與大會中央數據庫。`,
         });
       }
       forceRefresh();
@@ -873,7 +878,7 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
     forceRefresh();
   };
 
-  // Build Admin Items for 55 schools
+  // Build Admin Items for all schools
   const getAdminDashboardItems = (): AdminDashboardItem[] => {
     const allUsersMap = getUsers();
 
@@ -985,7 +990,7 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `全區55所學校報名狀態總表_${new Date().toISOString().substring(0, 10)}.csv`);
+    link.setAttribute('download', `全區${SCHOOLS.length}所學校報名狀態總表_${new Date().toISOString().substring(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1092,7 +1097,7 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
                   臺中市童軍專科考驗與聯團露營報名系統
                 </h2>
                 <p className="text-slate-600 text-sm leading-relaxed max-w-lg mx-auto">
-                  本系統專供全區 55 所學校代表上傳報名表件、大會審核與檔案管理。請點擊下方按鈕進行 Google 身分驗證與登入。
+                  本系統專供全區 {SCHOOLS.length} 所學校代表上傳報名表件、大會審核與檔案管理。請點擊下方按鈕進行 Google 身分驗證與登入。
                 </p>
               </div>
               <div className="pt-2">
@@ -1162,7 +1167,7 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
                   }`}
                 >
                   <Users className="w-4 h-4" />
-                  <span>全區 55 校報名總表</span>
+                  <span>全區 {SCHOOLS.length} 校報名總表</span>
                 </button>
 
                 <button
@@ -1227,7 +1232,7 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
                     <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">全區參與學校</div>
-                    <div className="text-3xl font-black text-slate-800 mt-1">55 <span className="text-xs font-normal text-slate-500">所</span></div>
+                    <div className="text-3xl font-black text-slate-800 mt-1">{SCHOOLS.length} <span className="text-xs font-normal text-slate-500">所</span></div>
                   </div>
                   <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
                     <div className="text-xs font-bold text-emerald-600 uppercase tracking-wider">已完成帳號註冊</div>
@@ -1268,7 +1273,7 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
                       onChange={(e) => setDashFilter(e.target.value as any)}
                       className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer"
                     >
-                      <option value="all">顯示全部學校 (55 校)</option>
+                      <option value="all">顯示全部學校 ({SCHOOLS.length} 校)</option>
                       <option value="registered">僅顯示已註冊學校</option>
                       <option value="unregistered">僅顯示未註冊學校</option>
                       <option value="completed">僅顯示檔案上傳齊全學校 (4/4)</option>
@@ -2448,44 +2453,70 @@ function doPost(e) {
               </div>
 
               {/* Confirm Upload Button */}
-              <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="text-xs text-slate-500 font-medium">
-                  {Object.values(selectedFiles).filter(f => f !== null).length > 0 ? (
-                    <span className="text-blue-700 font-bold bg-blue-50 px-3 py-1 rounded-lg border border-blue-200 inline-flex items-center space-x-1">
-                      <span>已選取 {Object.values(selectedFiles).filter(f => f !== null).length} 個項目準備上傳</span>
-                    </span>
-                  ) : (
-                    <span>您可以選擇 1 ~ 4 個檔名對應之檔案進行一次性或分次上傳。</span>
-                  )}
-                </div>
+              {(() => {
+                const uploadedSlotsCount = fileSlots.filter(s => {
+                  const f = getSchoolSlotFile(userRecord.school_id, s.key);
+                  return f && !f.isDead;
+                }).length;
+                const pendingSelectedCount = Object.values(selectedFiles).filter(f => f !== null).length;
 
-                <button
-                  type="button"
-                  onClick={handleUploadSubmit}
-                  disabled={isUploading || Object.values(selectedFiles).filter(f => f !== null).length === 0}
-                  className={`w-full sm:w-auto px-8 py-3.5 text-white font-bold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center space-x-2 ${
-                    isUploading || Object.values(selectedFiles).filter(f => f !== null).length === 0
-                      ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
-                      : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20 hover:shadow-emerald-600/30'
-                  }`}
-                >
-                  {isUploading ? (
-                    <>
-                      <RefreshCw className="w-5 h-5 animate-spin" />
-                      <span>檔案處理與編碼上傳中...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-5 h-5" />
-                      <span>
-                        {Object.values(selectedFiles).filter(f => f !== null).length > 0
-                          ? `確認上傳已選取的 ${Object.values(selectedFiles).filter(f => f !== null).length} 份檔案`
-                          : '請點選上方「選擇電腦檔案」'}
-                      </span>
-                    </>
-                  )}
-                </button>
-              </div>
+                return (
+                  <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="text-xs text-slate-500 font-medium">
+                      {pendingSelectedCount > 0 ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-blue-700 font-bold bg-blue-50 px-3 py-1 rounded-lg border border-blue-200 inline-flex items-center space-x-1">
+                              <span>本次新選取 {pendingSelectedCount} 個項目準備上傳</span>
+                            </span>
+                            <span className="text-slate-600 font-semibold">
+                              (累計進度：{uploadedSlotsCount + pendingSelectedCount} / {fileSlots.length})
+                            </span>
+                          </div>
+                          {uploadedSlotsCount > 0 && (
+                            <p className="text-emerald-700 text-[11px] font-semibold flex items-center space-x-1">
+                              <span>🛡️ 提示：先前已上傳的 {uploadedSlotsCount} 份檔案均完好保存，本次上傳僅補充新增表件，絕不會覆蓋或刪除舊檔。</span>
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <span>
+                          {uploadedSlotsCount > 0
+                            ? `貴校目前已完成 ${uploadedSlotsCount} / ${fileSlots.length} 項檔案上傳，您可隨時點選其餘未上傳項目的「選擇電腦檔案」進行補傳。`
+                            : `您可以選擇 1 ~ ${fileSlots.length} 個檔名對應之檔案進行一次性或分次上傳。`}
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleUploadSubmit}
+                      disabled={isUploading || pendingSelectedCount === 0}
+                      className={`w-full sm:w-auto px-8 py-3.5 text-white font-bold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center space-x-2 ${
+                        isUploading || pendingSelectedCount === 0
+                          ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                          : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20 hover:shadow-emerald-600/30'
+                      }`}
+                    >
+                      {isUploading ? (
+                        <>
+                          <RefreshCw className="w-5 h-5 animate-spin" />
+                          <span>檔案處理與編碼上傳中...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-5 h-5" />
+                          <span>
+                            {pendingSelectedCount > 0
+                              ? `確認上傳本次選取的 ${pendingSelectedCount} 份檔案`
+                              : '請點選上方「選擇電腦檔案」'}
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}

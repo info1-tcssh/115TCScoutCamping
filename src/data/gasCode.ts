@@ -1,6 +1,7 @@
 export const FIXED_CODE_GS = `// ⚙️ OAuth 認證設定（請至 Google Cloud Console 複製 Client ID 與 Client Secret 填入）
-const OAUTH_CLIENT_ID = '969089738237-e57nbmep29jc6gvq9es5f8sgbphsjp64.apps.googleusercontent.com';
+const OAUTH_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
 const OAUTH_CLIENT_SECRET = 'YOUR_GOOGLE_CLIENT_SECRET';
+
 /**
  * 動態取得當前運行的 Web App 網址（避免全域變數導致 URL 不一致）
  */
@@ -360,7 +361,7 @@ function registerUser(formData) {
   
   var userData = userSheet.getDataRange().getValues();
   
-  if (schoolId !== "55") {
+  if (schoolId !== "52" && schoolId !== "55") {
     for (var i = 1; i < userData.length; i++) {
       var existingSchoolId = String(userData[i][2]).trim();
       var existingType = String(userData[i][5]).trim().toLowerCase();

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, UserPlus, Trash2, Mail, User, Clock, AlertCircle, CheckCircle, Lock } from 'lucide-react';
 import { AdminAccount } from '../types';
+import { SCHOOLS } from '../data/schools';
 import { addAdmin, getAdmins, removeAdmin, subscribeDataChanges } from '../services/storageService';
 
 interface AdminManagerProps {
@@ -86,7 +87,7 @@ export const AdminManager: React.FC<AdminManagerProps> = ({ currentAdminEmail })
           </div>
         </div>
         <p className="text-xs text-slate-300 leading-relaxed mt-2">
-          預設總管理員：<span className="font-bold text-amber-300 underline">info1@cloud.tcssh.tc.edu.tw</span>。在此名單內的 Google Email 皆可直接登入管理員後台、審查全區 55 所學校檔案及操作 Audit Logs。
+          預設總管理員：<span className="font-bold text-amber-300 underline">info1@cloud.tcssh.tc.edu.tw</span>。在此名單內的 Google Email 皆可直接登入管理員後台、審查全區 {SCHOOLS.length} 所學校檔案及操作 Audit Logs。
         </p>
       </div>
 

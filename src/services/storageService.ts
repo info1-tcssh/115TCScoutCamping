@@ -262,11 +262,18 @@ export function initSeedData() {
       const filesMap: Record<string, Record<string, UploadedFile>> = {};
       snapshot.forEach(docSnap => {
         const item = docSnap.data() as UploadedFile & { school_id: string };
-        if (item && item.school_id && item.slotKey) {
-          if (!filesMap[item.school_id]) {
-            filesMap[item.school_id] = {};
+        const idParts = docSnap.id.split('_');
+        const sId = item.school_id || idParts[0];
+        const sKey = item.slotKey || idParts.slice(1).join('_');
+        if (sId && sKey) {
+          if (!filesMap[sId]) {
+            filesMap[sId] = {};
           }
-          filesMap[item.school_id][item.slotKey] = item;
+          filesMap[sId][sKey] = {
+            ...item,
+            school_id: sId,
+            slotKey: sKey,
+          };
         }
       });
       cachedFiles = filesMap;
@@ -822,6 +829,8 @@ export async function saveSchoolFile(
   if (firestoreUrl && firestoreUrl.startsWith('data:') && firestoreUrl.length > 700000) {
     if (newFile.driveUrl) {
       firestoreUrl = newFile.driveUrl;
+    } else if (firestoreUrl.length > 950000) {
+      firestoreUrl = ''; // Leave blank if oversized and no drive URL, preventing Firestore crash
     }
   }
 

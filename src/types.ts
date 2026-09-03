@@ -24,6 +24,7 @@ export interface UploadedFile {
   isDead?: boolean;
   driveFileId?: string;
   driveUrl?: string;
+  school_id?: string;
 }
 
 export interface AdminDashboardItem {
