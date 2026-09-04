@@ -1,8 +1,67 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Helper: Check if user is signed in with Firebase Auth
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper: Check if user is an authorized admin
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) ||
+        request.auth.token.email == 'info1@cloud.tcssh.tc.edu.tw'
+      );
+    }
+
+    // 1. Admins:
+    // Read: allowed for all clients to verify administrator status
+    // Write: strictly restricted to existing admins
+    match /admins/{adminEmail} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 2. System Settings (registrationPeriod, templateItems, uploadSlots, googleDrive):
+    // Read: allowed for all clients to read settings & deadline status
+    // Write: strictly restricted to admins
+    match /systemSettings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 3. Audit Logs:
+    // Read: allowed for system review
+    // Create: allowed so all important operations are recorded
+    // Update & Delete: strictly forbidden to maintain an immutable audit trail
+    match /auditLogs/{logId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if false;
+    }
+
+    // 4. Registered Users:
+    // Read: allowed for school status checking and admin dashboard
+    // Create & Update: allowed for registration and profile updating
+    // Delete: strictly restricted to admins to prevent malicious account wiping
+    match /users/{userEmail} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isAdmin();
+    }
+
+    // 5. School Files:
+    // Read: allowed for school representatives and admin dashboard
+    // Write (Create, Update, Delete): allowed for representatives managing their files
+    match /schoolFiles/{fileId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Default catch-all: deny all unlisted operations
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

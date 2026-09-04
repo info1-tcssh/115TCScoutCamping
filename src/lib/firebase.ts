@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, Firestore } from 'firebase/firestore';
 import { 
   getAuth, 
   GoogleAuthProvider, 
@@ -39,18 +39,25 @@ if (app) {
     console.error('Failed to initialize Firebase Auth:', err);
   }
 
+  const firestoreSettings = {
+    experimentalForceLongPolling: true,
+  };
+
   try {
     if (dbId && dbId !== '(default)' && typeof dbId === 'string' && dbId.trim().length > 0) {
-      firestoreInstance = getFirestore(app, dbId.trim());
+      firestoreInstance = initializeFirestore(app, firestoreSettings, dbId.trim());
     } else {
-      firestoreInstance = getFirestore(app);
+      firestoreInstance = initializeFirestore(app, firestoreSettings);
     }
   } catch (err) {
-    console.warn('Failed to initialize Firestore instance with dbId, falling back to default:', err);
     try {
-      firestoreInstance = getFirestore(app);
+      if (dbId && dbId !== '(default)' && typeof dbId === 'string' && dbId.trim().length > 0) {
+        firestoreInstance = getFirestore(app, dbId.trim());
+      } else {
+        firestoreInstance = getFirestore(app);
+      }
     } catch (fallbackErr) {
-      console.error('Failed to initialize default Firestore instance:', fallbackErr);
+      console.error('Failed to initialize Firestore instance:', fallbackErr);
     }
   }
 }

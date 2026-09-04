@@ -493,7 +493,7 @@ function getSafeMimeType(fileName) {
 // 4. 上傳檔案處理
 function processFormWithAuthPayload(payload) {
   try {
-    var folderId = '1sPiGTnJcn2P0onObYvXXhkOeZRWQAF0l'; 
+    var folderId = 'YOUR_GOOGLE_DRIVE_FOLDER_ID'; // 請填入大會之 Google Drive 資料夾 ID
     var folder = DriveApp.getFolderById(folderId);
     
     var schoolId = String(payload.schoolId).trim();

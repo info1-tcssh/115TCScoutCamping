@@ -27,9 +27,14 @@ const STORAGE_KEYS = {
 };
 
 // Default Admins
+export const DEFAULT_ADMIN_EMAIL = (
+  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_INITIAL_ADMIN_EMAIL) ||
+  'info1@cloud.tcssh.tc.edu.tw'
+).toLowerCase().trim();
+
 const DEFAULT_ADMINS: AdminAccount[] = [
   {
-    email: 'info1@cloud.tcssh.tc.edu.tw',
+    email: DEFAULT_ADMIN_EMAIL,
     name: '系統總管理員 (臺中二中)',
     addedAt: '2026-08-01 09:00:00',
     addedBy: '系統預設',
@@ -494,7 +499,7 @@ export async function addAdmin(email: string, name: string, addedBy: string): Pr
 
 export async function removeAdmin(email: string, removedBy: string): Promise<{ success: boolean; message: string }> {
   const normalized = email.toLowerCase().trim();
-  if (normalized === 'info1@cloud.tcssh.tc.edu.tw') {
+  if (normalized === DEFAULT_ADMIN_EMAIL) {
     return { success: false, message: '預設系統總管理員帳號不可刪除！' };
   }
 

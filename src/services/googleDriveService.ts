@@ -71,17 +71,13 @@ export function getDriveAccessToken(): string | null {
 }
 
 export function setDriveAccessToken(token: string): void {
+  // OAuth Access Token is strictly kept in the administrator's local browser session (sessionStorage)
+  // NEVER write private OAuth tokens to cloud database
   sessionStorage.setItem(DRIVE_TOKEN_KEY, token);
-  if (db) {
-    setDoc(doc(db, 'systemSettings', 'googleDrive'), { driveAccessToken: token }, { merge: true }).catch(console.error);
-  }
 }
 
 export function clearDriveAccessToken(): void {
   sessionStorage.removeItem(DRIVE_TOKEN_KEY);
-  if (db) {
-    setDoc(doc(db, 'systemSettings', 'googleDrive'), { driveAccessToken: '' }, { merge: true }).catch(console.error);
-  }
 }
 
 export function getTargetDriveFolderId(): string {
