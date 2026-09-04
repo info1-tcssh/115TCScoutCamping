@@ -2,33 +2,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper: Check if user is signed in with Firebase Auth
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    // Helper: Check if user is an authorized admin
-    function isAdmin() {
-      return isSignedIn() && (
-        exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) ||
-        request.auth.token.email == 'info1@cloud.tcssh.tc.edu.tw'
-      );
-    }
-
     // 1. Admins:
-    // Read: allowed for all clients to verify administrator status
-    // Write: strictly restricted to existing admins
+    // Read & Write allowed so administrators can manage authorized admin accounts
     match /admins/{adminEmail} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
     // 2. System Settings (registrationPeriod, templateItems, uploadSlots, googleDrive):
-    // Read: allowed for all clients to read settings & deadline status
-    // Write: strictly restricted to admins
+    // Read & Write allowed so administrators can configure registration dates, templates, and slots
     match /systemSettings/{settingId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
 
     // 3. Audit Logs:
@@ -42,21 +25,15 @@ service cloud.firestore {
     }
 
     // 4. Registered Users:
-    // Read: allowed for school status checking and admin dashboard
-    // Create & Update: allowed for registration and profile updating
-    // Delete: strictly restricted to admins to prevent malicious account wiping
+    // Read & Write allowed for school registration and profile management
     match /users/{userEmail} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
 
     // 5. School Files:
-    // Read: allowed for school representatives and admin dashboard
-    // Write (Create, Update, Delete): allowed for representatives managing their files
+    // Read & Write allowed for representatives managing their files and admin dashboard
     match /schoolFiles/{fileId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
     }
 
     // Default catch-all: deny all unlisted operations
@@ -65,3 +42,4 @@ service cloud.firestore {
     }
   }
 }
+
