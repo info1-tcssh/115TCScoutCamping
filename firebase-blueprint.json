@@ -58,6 +58,19 @@
         "detail": { "type": "string" }
       },
       "required": ["time", "email", "actionType", "detail"]
+    },
+    "systemSettings": {
+      "title": "SystemSettings",
+      "description": "System configuration documents such as registrationPeriod, googleDrive, templateItems, and uploadSlots",
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "beforeStartMessage": { "type": "string" },
+        "afterEndMessage": { "type": "string" },
+        "contactInfo": { "type": "string" }
+      }
     }
   }
 }

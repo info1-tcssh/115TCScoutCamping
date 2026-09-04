@@ -1,4 +1,4 @@
-import { AdminAccount, AuditLog, UploadedFile, UserRecord, TemplateItemConfig, UploadSlotConfig } from '../types';
+import { AdminAccount, AuditLog, UploadedFile, UserRecord, TemplateItemConfig, UploadSlotConfig, RegistrationPeriodConfig } from '../types';
 import { SCHOOLS } from '../data/schools';
 import { db } from '../lib/firebase';
 import { validatePhoneFormat, sanitizeInput } from '../lib/security';
@@ -23,6 +23,7 @@ const STORAGE_KEYS = {
   CURRENT_AUTH: 'scout_app_current_auth_v2',
   TEMPLATES: 'scout_app_templates_v2',
   UPLOAD_SLOTS: 'scout_app_upload_slots_v2',
+  REGISTRATION_PERIOD: 'scout_app_registration_period_v2',
 };
 
 // Default Admins
@@ -90,6 +91,16 @@ export const DEFAULT_UPLOAD_SLOTS: UploadSlotConfig[] = [
     description: '郵局匯款或轉帳收據影本，以及開立收據抬頭資訊。',
   },
 ];
+
+// Default Registration Period Configuration
+export const DEFAULT_REGISTRATION_PERIOD: RegistrationPeriodConfig = {
+  enabled: false,
+  startDate: '',
+  endDate: '',
+  beforeStartMessage: '報名作業尚未開始，請於開放時間內再次前往系統報名。',
+  afterEndMessage: '第41屆行義蘭姐童軍專科考驗暨聯團露營報名已截止收件，若有補件或異動需求，請洽大會主辦單位。',
+  contactInfo: '主辦學校：臺中市立臺中第二高級中等學校 學務處社團活動組\n電話：04-22021521 分機 1340、1341 | 信箱：club@cloud.tcssh.tc.edu.tw',
+};
 
 // Helper to derive automatic export/download link from Google Docs/Sheets URL
 export function deriveDownloadUrl(url: string, fileType?: string): string {
@@ -170,6 +181,7 @@ let cachedFiles: Record<string, Record<string, UploadedFile>> = getStorage(STORA
 let cachedLogs: AuditLog[] = getStorage(STORAGE_KEYS.LOGS, []);
 let cachedTemplates: TemplateItemConfig[] = getStorage(STORAGE_KEYS.TEMPLATES, DEFAULT_TEMPLATE_ITEMS);
 let cachedUploadSlots: UploadSlotConfig[] = getStorage(STORAGE_KEYS.UPLOAD_SLOTS, DEFAULT_UPLOAD_SLOTS);
+let cachedRegistrationPeriod: RegistrationPeriodConfig = getStorage(STORAGE_KEYS.REGISTRATION_PERIOD, DEFAULT_REGISTRATION_PERIOD);
 
 
 // Listeners subscribers list
@@ -197,6 +209,13 @@ let firebaseInitialized = false;
 export function initSeedData() {
   if (firebaseInitialized) return;
   firebaseInitialized = true;
+
+  // 🛡️ 啟動伺服器高精度網路校時與定時校驗 (防止本機竄改時間)
+  if (typeof window !== 'undefined') {
+    syncTrustedServerTime();
+    setInterval(() => syncTrustedServerTime(), 3 * 60 * 1000);
+    window.addEventListener('focus', () => syncTrustedServerTime());
+  }
 
   if (!db) {
     console.warn('Firestore db instance is not available. Running in offline/localStorage mode.');
@@ -324,6 +343,16 @@ export function initSeedData() {
       if (docSnap.exists() && docSnap.data().slots) {
         cachedUploadSlots = docSnap.data().slots;
         setStorage(STORAGE_KEYS.UPLOAD_SLOTS, cachedUploadSlots);
+        notifySubscribers();
+      }
+    });
+
+    const periodRef = doc(db, 'systemSettings', 'registrationPeriod');
+    onSnapshot(periodRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as RegistrationPeriodConfig;
+        cachedRegistrationPeriod = { ...DEFAULT_REGISTRATION_PERIOD, ...data };
+        setStorage(STORAGE_KEYS.REGISTRATION_PERIOD, cachedRegistrationPeriod);
         notifySubscribers();
       }
     });
@@ -542,6 +571,18 @@ export async function registerUser(data: {
   const email = data.email.toLowerCase().trim();
   if (!email) return { success: false, message: '請提供有效的 Google 電子郵件！' };
 
+  // 🛡️ 寫入動作雙重攔截：驗證伺服器權威時間與報名期程（管理者豁免）
+  if (!isAdmin(email)) {
+    await syncTrustedServerTime(true);
+    const periodStatus = checkRegistrationPeriodStatus();
+    if (!periodStatus.isOpen) {
+      return {
+        success: false,
+        message: `【大會安全防護攔截】目前非報名開放期間（${periodStatus.message}），系統已全面拒絕代表註冊與寫入請求。`,
+      };
+    }
+  }
+
   // Sanitize fields for security (XSS protection)
   const sanitizedName = sanitizeInput(data.user_name);
   const sanitizedPhone = sanitizeInput(data.user_phone);
@@ -630,6 +671,18 @@ export async function updateUserProfile(
   const email = targetEmail.toLowerCase().trim();
   if (!email || !cachedUsers[email]) {
     return { success: false, message: '找不到該學校代表帳號！' };
+  }
+
+  // 🛡️ 寫入動作雙重攔截：強制透過伺服器權威時間檢核報名期程（管理者豁免）
+  if (!operator.isAdmin && !isAdmin(operator.email)) {
+    await syncTrustedServerTime(true);
+    const periodStatus = checkRegistrationPeriodStatus();
+    if (!periodStatus.isOpen) {
+      return {
+        success: false,
+        message: `【大會安全防護攔截】目前非報名開放期間（${periodStatus.message}），系統已拒絕資料修改請求。`,
+      };
+    }
   }
 
   const existingUser = cachedUsers[email];
@@ -797,6 +850,18 @@ export async function saveSchoolFile(
   fileInfo: { name: string; url: string; size?: number; driveFileId?: string; driveUrl?: string },
   user: { email: string; name: string; schoolName: string; userId: string }
 ): Promise<{ success: boolean; message?: string }> {
+  // 🛡️ 寫入動作雙重攔截：強制透過伺服器權威時間檢核報名期程（管理者豁免）
+  if (!isAdmin(user.email)) {
+    await syncTrustedServerTime(true);
+    const periodStatus = checkRegistrationPeriodStatus();
+    if (!periodStatus.isOpen) {
+      return {
+        success: false,
+        message: `【大會安全防護攔截】目前非報名開放期間（${periodStatus.message}），系統已即時拒絕檔案上傳寫入作業！`,
+      };
+    }
+  }
+
   if (!cachedFiles[school_id]) {
     cachedFiles[school_id] = {};
   }
@@ -889,6 +954,18 @@ export async function deleteSchoolFile(
   user: { email: string; name: string; schoolName: string; userId: string },
   isAdminAction: boolean = false
 ): Promise<{ success: boolean; message?: string }> {
+  // 🛡️ 寫入動作雙重攔截：強制透過伺服器權威時間檢核報名期程（管理者豁免）
+  if (!isAdminAction && !isAdmin(user.email)) {
+    await syncTrustedServerTime(true);
+    const periodStatus = checkRegistrationPeriodStatus();
+    if (!periodStatus.isOpen) {
+      return {
+        success: false,
+        message: `【大會安全防護攔截】目前非報名開放期間（${periodStatus.message}），系統已拒絕刪除檔案作業！`,
+      };
+    }
+  }
+
   const target = cachedFiles[school_id]?.[slotKey];
   const targetName = target?.name || `欄位 [${slotKey}] 檔案`;
 
@@ -1050,4 +1127,221 @@ export async function saveUploadSlots(slots: UploadSlotConfig[]): Promise<{ succ
 
 export function setCurrentAuthSession(session: { email: string; mode: 'user' | 'admin' }): void {
   setStorage(STORAGE_KEYS.CURRENT_AUTH, session);
+}
+
+// ==========================================
+// 🛡️ TRUSTED SERVER TIME & TAIWAN TIME UTILS (防止竄改電腦時間)
+// ==========================================
+
+let trustedServerTimeBase: number | null = null;
+let trustedMonotonicBase: number = typeof performance !== 'undefined' ? performance.now() : 0;
+let isSyncingServerTime = false;
+
+/**
+ * 伺服器時間校時機制：
+ * 1. 優先向 /api/server-time 請求真實伺服器 Unix Epoch 時間戳記
+ * 2. 備援讀取當前 HTTP 請求 HEAD 回應之 Date 標頭
+ * 3. 結合 performance.now() 高精度硬體單調時鐘，徹底防止使用者在作業系統手動竄改電腦時間
+ */
+export async function syncTrustedServerTime(force = false): Promise<number> {
+  if (isSyncingServerTime && !force) {
+    return getTrustedCurrentTime();
+  }
+
+  isSyncingServerTime = true;
+  try {
+    const tStart = typeof performance !== 'undefined' ? performance.now() : 0;
+    let serverTimestamp: number | null = null;
+
+    // 方式 A: 專用 /api/server-time 端點
+    try {
+      const res = await fetch('/api/server-time', {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data.timestamp === 'number') {
+          const rtt = (typeof performance !== 'undefined' ? performance.now() : 0) - tStart;
+          serverTimestamp = data.timestamp + Math.round(rtt / 2);
+        }
+      }
+    } catch {
+      // 容錯降級
+    }
+
+    // 方式 B: 若專用端點暫時無回應，讀取 Web 伺服器 HTTP Response Header Date
+    if (!serverTimestamp && typeof window !== 'undefined') {
+      try {
+        const headRes = await fetch(window.location.href, {
+          method: 'HEAD',
+          cache: 'no-store',
+        });
+        const dateHeader = headRes.headers.get('date');
+        if (dateHeader) {
+          const parsed = Date.parse(dateHeader);
+          if (!isNaN(parsed)) {
+            serverTimestamp = parsed;
+          }
+        }
+      } catch {
+        // 容錯降級
+      }
+    }
+
+    if (serverTimestamp) {
+      trustedServerTimeBase = serverTimestamp;
+      trustedMonotonicBase = typeof performance !== 'undefined' ? performance.now() : 0;
+    }
+  } catch (err) {
+    console.warn('Trusted server time sync warning:', err);
+  } finally {
+    isSyncingServerTime = false;
+  }
+
+  return getTrustedCurrentTime();
+}
+
+/**
+ * 取得可靠的當前時間 (Epoch Milliseconds)：
+ * 若已與伺服器校時，使用 (校時基準 + 單調流逝時間)，不採信使用者電腦可能被竄改的本機時間！
+ */
+export function getTrustedCurrentTime(): number {
+  if (trustedServerTimeBase !== null && typeof performance !== 'undefined') {
+    const elapsed = performance.now() - trustedMonotonicBase;
+    return Math.round(trustedServerTimeBase + elapsed);
+  }
+  return Date.now();
+}
+
+/**
+ * 解析台灣時間 (UTC+8 / Asia/Taipei)：
+ * 嚴格將輸入字串以台灣時區 (+08:00) 進行解析，回傳絕對 Epoch 毫秒數，確保全球跨時區比對完全一致。
+ */
+export function parseTaiwanDateTime(dateStr?: string): number | null {
+  if (!dateStr || !dateStr.trim()) return null;
+  const s = dateStr.trim();
+  let formatted = s.replace(' ', 'T');
+  if (!formatted.includes('+') && !formatted.includes('-') && !formatted.endsWith('Z')) {
+    if (formatted.length === 16) {
+      formatted += ':00';
+    }
+    formatted += '+08:00';
+  }
+  const ts = Date.parse(formatted);
+  return isNaN(ts) ? null : ts;
+}
+
+// Format date string (e.g. 2026-09-10T08:00) into friendly Chinese string using Taiwan Time (UTC+8)
+export function formatDisplayDateTime(dateStr?: string): string {
+  if (!dateStr) return '';
+  const ts = parseTaiwanDateTime(dateStr);
+  if (ts === null) return dateStr;
+  const taiwanDate = new Date(ts + 8 * 3600 * 1000);
+  const year = taiwanDate.getUTCFullYear();
+  const month = String(taiwanDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(taiwanDate.getUTCDate()).padStart(2, '0');
+  const hours = String(taiwanDate.getUTCHours()).padStart(2, '0');
+  const minutes = String(taiwanDate.getUTCMinutes()).padStart(2, '0');
+  const weekdays = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+  const weekday = weekdays[taiwanDate.getUTCDay()];
+  return `${year}年${month}月${day}日 (${weekday}) ${hours}:${minutes}`;
+}
+
+// Registration Period Getters & Setters
+export function getRegistrationPeriod(): RegistrationPeriodConfig {
+  return cachedRegistrationPeriod && cachedRegistrationPeriod.beforeStartMessage !== undefined
+    ? cachedRegistrationPeriod
+    : DEFAULT_REGISTRATION_PERIOD;
+}
+
+export function checkRegistrationPeriodStatus(
+  period: RegistrationPeriodConfig = getRegistrationPeriod(),
+  customCurrentTime?: number
+): {
+  status: 'OPEN' | 'NOT_STARTED' | 'ENDED';
+  isOpen: boolean;
+  message: string;
+  startDateFormatted?: string;
+  endDateFormatted?: string;
+} {
+  if (!period.enabled) {
+    return {
+      status: 'OPEN',
+      isOpen: true,
+      message: '全時段開放報名',
+    };
+  }
+
+  // 🛡️ 使用伺服器校時防竄改之可靠時間（對齊台灣時區 UTC+8）
+  const currentEpoch = customCurrentTime !== undefined ? customCurrentTime : getTrustedCurrentTime();
+
+  if (period.startDate) {
+    const startEpoch = parseTaiwanDateTime(period.startDate);
+    if (startEpoch !== null && currentEpoch < startEpoch) {
+      return {
+        status: 'NOT_STARTED',
+        isOpen: false,
+        message: period.beforeStartMessage || '報名尚未開始',
+        startDateFormatted: formatDisplayDateTime(period.startDate),
+        endDateFormatted: formatDisplayDateTime(period.endDate),
+      };
+    }
+  }
+
+  if (period.endDate) {
+    const endEpoch = parseTaiwanDateTime(period.endDate);
+    if (endEpoch !== null && currentEpoch > endEpoch) {
+      return {
+        status: 'ENDED',
+        isOpen: false,
+        message: period.afterEndMessage || '報名已截止',
+        startDateFormatted: formatDisplayDateTime(period.startDate),
+        endDateFormatted: formatDisplayDateTime(period.endDate),
+      };
+    }
+  }
+
+  return {
+    status: 'OPEN',
+    isOpen: true,
+    message: '報名期間開放中',
+    startDateFormatted: formatDisplayDateTime(period.startDate),
+    endDateFormatted: formatDisplayDateTime(period.endDate),
+  };
+}
+
+export async function saveRegistrationPeriod(
+  config: RegistrationPeriodConfig,
+  operatorEmail?: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    cachedRegistrationPeriod = config;
+    setStorage(STORAGE_KEYS.REGISTRATION_PERIOD, config);
+    if (db) {
+      await setDoc(doc(db, 'systemSettings', 'registrationPeriod'), config, { merge: true });
+    }
+
+    // Add audit log for administrative action tracking
+    const adminEmail = operatorEmail || 'admin';
+    const statusText = config.enabled
+      ? `啟用報名期程限制 (起始：${config.startDate ? formatDisplayDateTime(config.startDate) : '無限制'}，截止：${config.endDate ? formatDisplayDateTime(config.endDate) : '無限制'})`
+      : '關閉報名期程限制 (全時段開放自由報名)';
+
+    addAuditLog({
+      time: new Date().toLocaleString('zh-TW', { hour12: false }),
+      userId: 'ADMIN',
+      email: adminEmail,
+      schoolName: '大會管理團隊',
+      actionType: 'CONFIG_UPDATE',
+      detail: `修改報名起訖時間與鎖定設定：${statusText}`,
+    });
+
+    notifySubscribers();
+    return { success: true, message: '已成功儲存並同步「報名起訖時間與中央鎖定限制」設定！' };
+  } catch (err: any) {
+    console.error('saveRegistrationPeriod error:', err);
+    return { success: false, message: '儲存期程設定失敗：' + (err as Error).message };
+  }
 }

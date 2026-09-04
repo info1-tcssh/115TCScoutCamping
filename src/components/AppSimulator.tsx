@@ -5,13 +5,15 @@ import { validatePhoneFormat, sanitizeInput } from '../lib/security';
 import {
   Download, Upload, Trash2, CheckCircle2, AlertTriangle, RefreshCw, FileText, Search,
   ShieldAlert, Users, FolderCheck, ShieldCheck, UserPlus, Eye, FileDown, PlusCircle, LogOut, ExternalLink, ArrowRight,
-  Edit3, UserX, Save, Lock, Info, X, HardDrive, School, CloudUpload, FolderOpen
+  Edit3, UserX, Save, Lock, Info, X, HardDrive, School, CloudUpload, FolderOpen,
+  Calendar, Clock, AlertCircle, Phone, Timer, Unlock
 } from 'lucide-react';
 import {
   initSeedData, getUserByEmail, registerUser, isSchoolRegistered, getSchoolFiles, getAllSchoolFilesWithDead,
   getSchoolSlotFile, saveSchoolFile, deleteSchoolFile, markSchoolFileDead, getAllFilesMap, getUsers, getAuditLogs, addAuditLog, isAdmin,
   getCurrentAuthSession, setCurrentAuthSession, subscribeDataChanges, purgeAllUserData,
-  updateUserProfile, deleteUserAccount, getTemplateItems, getUploadSlots, deriveDownloadUrl, parseLogTimestamp
+  updateUserProfile, deleteUserAccount, getTemplateItems, getUploadSlots, deriveDownloadUrl, parseLogTimestamp,
+  getRegistrationPeriod, checkRegistrationPeriodStatus, formatDisplayDateTime, syncTrustedServerTime
 } from '../services/storageService';
 import {
   getDriveAccessToken,
@@ -58,6 +60,7 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
   // Dynamic Upload Slots and Download Templates state
   const [fileSlots, setFileSlots] = useState<UploadSlotConfig[]>(getUploadSlots());
   const [templateItems, setTemplateItems] = useState<TemplateItemConfig[]>(getTemplateItems());
+  const [adminPreviewLockout, setAdminPreviewLockout] = useState(false);
 
   // Ensure seed data and real-time listeners are initialized
   useEffect(() => {
@@ -388,6 +391,19 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
     if (!userRecord) return;
     setSelfPhoneError(null);
 
+    // 🛡️ 雙重攔截前置防護：驗證伺服器權威時間與開放狀態
+    if (!isCurrentAdmin) {
+      await syncTrustedServerTime(true);
+      const periodStatus = checkRegistrationPeriodStatus();
+      if (!periodStatus.isOpen) {
+        setStatusMessage({
+          type: 'error',
+          text: `🛑【大會安全防護攔截】目前非報名開放期間（${periodStatus.message}），系統已禁止修改資料！`,
+        });
+        return;
+      }
+    }
+
     // Sanitize fields for security (XSS protection)
     const sanitizedName = sanitizeInput(selfEditName);
     const sanitizedPhone = sanitizeInput(selfEditPhone);
@@ -656,6 +672,19 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
       return;
     }
 
+    // 🛡️ 雙重攔截前置防護：上傳前即時向伺服器網路校時並檢查開放期程（防止改電腦時間或強行繞過）
+    if (!isCurrentAdmin) {
+      await syncTrustedServerTime(true);
+      const periodStatus = checkRegistrationPeriodStatus();
+      if (!periodStatus.isOpen) {
+        setStatusMessage({
+          type: 'error',
+          text: `🛑【大會安全防護攔截】目前非報名開放期間（${periodStatus.message}），系統已全面鎖定禁止上傳！`,
+        });
+        return;
+      }
+    }
+
     const activeUploads = (Object.entries(selectedFiles) as [string, File | null][])
       .filter((entry): entry is [string, File] => entry[1] !== null);
 
@@ -844,6 +873,19 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
   const handleDeleteFile = async (slotKey: string, fileName: string) => {
     if (!userRecord) return;
 
+    // 🛡️ 雙重攔截前置防護：驗證伺服器權威時間與開放狀態
+    if (!isCurrentAdmin) {
+      await syncTrustedServerTime(true);
+      const periodStatus = checkRegistrationPeriodStatus();
+      if (!periodStatus.isOpen) {
+        setStatusMessage({
+          type: 'error',
+          text: `🛑【大會安全防護攔截】目前非報名開放期間（${periodStatus.message}），系統已禁止刪除或變更檔案！`,
+        });
+        return;
+      }
+    }
+
     const existingSlotFile = getSchoolSlotFile(userRecord.school_id, slotKey);
 
     if (existingSlotFile?.driveFileId && (getDriveAccessToken() || getGasWebAppUrl())) {
@@ -1022,9 +1064,23 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
   // Check if current mode is ADMIN and user is authorized as ADMIN
   const showAdminView = isCurrentAdmin && authMode === 'admin';
 
+  // Registration period evaluation:
+  const periodConfig = getRegistrationPeriod();
+  const periodStatus = checkRegistrationPeriodStatus(periodConfig);
+
+  // Is registration restricted for normal school users?
+  const isPeriodRestricted = periodConfig.enabled && !periodStatus.isOpen;
+
+  // Determine whether to display the central lockout screen
+  const showLockoutScreen = !showAdminView && (
+    (isPeriodRestricted && !isCurrentAdmin) ||
+    (isCurrentAdmin && adminPreviewLockout)
+  );
+
   // User mode view logic:
-  const showSchoolView = !showAdminView && !!userRecord;
-  const showRegisterView = !showAdminView && !userRecord;
+  const showSchoolView = !showAdminView && !showLockoutScreen && !!userRecord;
+  const showRegisterView = !showAdminView && !showLockoutScreen && !userRecord && !!userEmail;
+  const showUnauthenticatedView = !showAdminView && !showLockoutScreen && !userEmail;
 
   return (
     <div className="bg-slate-100 min-h-screen pb-16 font-sans">
@@ -1085,8 +1141,189 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
       {/* RENDER VIEW ACCORDING TO USER STATE */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
 
+        {/* 0. SCENARIO 0: REGISTRATION PERIOD LOCKOUT (CENTRAL DISPLAY) */}
+        {showLockoutScreen && (
+          <div className="max-w-2xl mx-auto py-10 px-4 space-y-4">
+            {/* Admin preview indicator banner if admin is previewing */}
+            {isCurrentAdmin && (
+              <div className="bg-amber-900 text-amber-100 px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs font-bold shadow-md border border-amber-700">
+                <div className="flex items-center space-x-2">
+                  <ShieldCheck className="w-4 h-4 text-amber-400" />
+                  <span>管理員預覽模式：您正在預覽一般訪客所見之【{periodStatus.status === 'NOT_STARTED' ? '報名尚未開始' : '報名已截止'}】中央鎖定畫面。</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAdminPreviewLockout(false)}
+                  className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-xs font-black transition-all cursor-pointer shadow"
+                >
+                  關閉預覽，返回操作
+                </button>
+              </div>
+            )}
+
+            <div className={`bg-white rounded-3xl p-8 sm:p-12 shadow-2xl border text-center space-y-6 ${
+              periodStatus.status === 'NOT_STARTED' ? 'border-amber-200' : 'border-rose-200'
+            }`}>
+              
+              {/* Central Status Icon */}
+              <div className={`w-20 h-20 rounded-3xl mx-auto flex items-center justify-center shadow-inner ${
+                periodStatus.status === 'NOT_STARTED'
+                  ? 'bg-amber-100 text-amber-600 ring-8 ring-amber-50'
+                  : 'bg-rose-100 text-rose-600 ring-8 ring-rose-50'
+              }`}>
+                {periodStatus.status === 'NOT_STARTED' ? (
+                  <Clock className="w-10 h-10" />
+                ) : (
+                  <Lock className="w-10 h-10" />
+                )}
+              </div>
+
+              {/* Event Badge & Main Lockout Heading */}
+              <div className="space-y-2">
+                <div className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+                  periodStatus.status === 'NOT_STARTED'
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-rose-100 text-rose-800'
+                }`}>
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>臺中市第41屆行義蘭姐童軍專科考驗暨聯團露營</span>
+                </div>
+
+                {/* THE CORE TEXT AS SPECIFIED BY USER */}
+                <h2 className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight">
+                  {periodStatus.status === 'NOT_STARTED' ? '報名尚未開始' : '報名已截止'}
+                </h2>
+
+                {/* Time Display Highlight Box */}
+                {periodStatus.status === 'NOT_STARTED' ? (
+                  periodStatus.startDateFormatted ? (
+                    <div className="pt-2">
+                      <div className="inline-block px-4 py-2 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 font-bold text-sm">
+                        ⏳ 大會預計開放時間：<span className="font-black text-amber-800">{periodStatus.startDateFormatted}</span>
+                      </div>
+                    </div>
+                  ) : null
+                ) : (
+                  periodStatus.endDateFormatted ? (
+                    <div className="pt-2">
+                      <div className="inline-block px-4 py-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 font-bold text-sm">
+                        🛑 系統已於下方時間截止收件：<span className="font-black text-rose-800">{periodStatus.endDateFormatted}</span>
+                      </div>
+                    </div>
+                  ) : null
+                )}
+              </div>
+
+              {/* Supplemental Notice from Admin Config */}
+              <div className={`p-4 rounded-2xl text-xs sm:text-sm leading-relaxed whitespace-pre-line border ${
+                periodStatus.status === 'NOT_STARTED'
+                  ? 'bg-amber-50/50 border-amber-200/70 text-slate-700'
+                  : 'bg-rose-50/50 border-rose-200/70 text-slate-700'
+              }`}>
+                {periodStatus.status === 'NOT_STARTED'
+                  ? (periodConfig.beforeStartMessage || '報名作業尚未開始，請於開放時間內再次前往本系統完成報名。')
+                  : (periodConfig.afterEndMessage || '第41屆行義蘭姐童軍專科考驗暨聯團露營報名已截止收件，若有補件或重大異動需求，請洽大會主辦單位。')}
+              </div>
+
+              {/* Organizer Contact Info Card */}
+              {periodConfig.contactInfo && (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 text-left whitespace-pre-line leading-relaxed space-y-1">
+                  <div className="font-bold text-slate-800 flex items-center space-x-1.5">
+                    <Phone className="w-3.5 h-3.5 text-slate-500" />
+                    <span>主辦單位聯絡資訊：</span>
+                  </div>
+                  <p className="font-sans pl-5 text-slate-600">{periodConfig.contactInfo}</p>
+                </div>
+              )}
+
+              {/* Bottom Quick Actions (Login / Switch Account / Back to Admin) */}
+              <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+                <div>
+                  {userEmail ? (
+                    <span>目前登入帳號：<strong className="text-slate-700">{userEmail}</strong></span>
+                  ) : (
+                    <span>非授權人員僅能於開放時間內進行填報</span>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-3">
+                  {isCurrentAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode('admin')}
+                      className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold flex items-center space-x-1 transition-all cursor-pointer shadow-sm"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>直接返回管理員後台</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={onOpenAuthModal}
+                      className="text-slate-600 hover:text-emerald-700 underline font-semibold flex items-center space-x-1 cursor-pointer"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>{userEmail ? '切換 Google 帳號' : '大會管理人員由此登入'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* ADMIN OVERRIDE PASS BANNER (WHEN ADMIN IS IN USER VIEW DURING RESTRICTED PERIOD) */}
+        {isPeriodRestricted && isCurrentAdmin && !adminPreviewLockout && !showAdminView && (
+          <div className="mb-6 bg-amber-900/90 text-amber-100 px-5 py-3 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-medium shadow-md border border-amber-700">
+            <div className="flex items-center space-x-2.5">
+              <ShieldCheck className="w-5 h-5 text-amber-400 flex-shrink-0" />
+              <div>
+                <span className="font-bold text-amber-200">【大會管理員免受限制通行證】</span>
+                <span>
+                  目前系統處於【{periodStatus.status === 'NOT_STARTED' ? '報名尚未開始' : '報名已截止'}】限制狀態，一般學校代表已被中央畫面鎖定。您具備特權可正常檢視與測試。
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAdminPreviewLockout(true)}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl transition-all flex items-center space-x-1 shadow cursor-pointer self-start sm:self-auto"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>預覽學校代表鎖定畫面</span>
+            </button>
+          </div>
+        )}
+
+        {/* ACTIVE REGISTRATION PERIOD NOTICE BANNER */}
+        {periodConfig.enabled && periodStatus.isOpen && !showAdminView && !showLockoutScreen && (
+          <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-emerald-900 shadow-sm">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-emerald-600 text-white rounded-xl shadow-sm">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="font-bold flex items-center gap-2">
+                  <span>報名系統開放期間進行中</span>
+                  <span className="px-2 py-0.2 rounded-full bg-emerald-200/80 text-emerald-800 text-[10px] font-black">
+                    收件中
+                  </span>
+                </div>
+                <div className="text-emerald-700 text-[11px] mt-0.5">
+                  {periodStatus.endDateFormatted ? (
+                    <span>預計截止收件時間：<strong className="text-emerald-900 underline">{periodStatus.endDateFormatted}</strong>，請各校把握時間儘速完成表件上傳。</span>
+                  ) : (
+                    <span>目前全時段開放自由報名與表件上傳。</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 1. SCENARIO A: UNAUTHENTICATED USER (NEEDS LOGIN) */}
-        {!userEmail && (
+        {showUnauthenticatedView && (
           <div className="max-w-2xl mx-auto py-12 px-4 text-center space-y-6">
             <div className="bg-white rounded-3xl p-8 sm:p-10 shadow-xl border border-slate-200/80 space-y-6">
               <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-2xl mx-auto flex items-center justify-center shadow-inner">
@@ -1122,7 +1359,7 @@ export const AppSimulator: React.FC<AppSimulatorProps> = ({
         )}
 
         {/* 2. SCENARIO B: USER LOGGED IN, NEEDS REGISTRATION */}
-        {userEmail && showRegisterView && (
+        {showRegisterView && (
           <UserRegisterView
             userEmail={userEmail}
             onSuccessRegister={() => {
@@ -2179,7 +2416,7 @@ function doPost(e) {
             )}
 
             {/* SUB-TAB 5: DYNAMIC APP CONFIGS */}
-            {adminSubTab === 'configs' && <AppConfigManager />}
+            {adminSubTab === 'configs' && <AppConfigManager currentAdminEmail={userEmail} />}
           </div>
         )}
 

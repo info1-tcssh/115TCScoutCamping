@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserCheck, School, Phone, User, FileText, ShieldAlert, CheckCircle, AlertCircle, Search, ChevronDown, X } from 'lucide-react';
 import { SCHOOLS } from '../data/schools';
-import { isSchoolRegistered, registerUser } from '../services/storageService';
+import { isSchoolRegistered, registerUser, isAdmin, syncTrustedServerTime, checkRegistrationPeriodStatus } from '../services/storageService';
 import { validatePhoneFormat, sanitizeInput } from '../lib/security';
 
 interface UserRegisterViewProps {
@@ -100,6 +100,16 @@ export const UserRegisterView: React.FC<UserRegisterViewProps> = ({
     if (!validatePhoneFormat(sanitizedPhone)) {
       setErrorMsg('聯絡電話格式不正確！必須是有效的台灣手機 (如：0912-345678) 或市話 (如：04-22021521)，可含分機，且長度合理。');
       return;
+    }
+
+    // 🛡️ 雙重攔截前置防護：驗證伺服器權威時間與報名期程（防止改電腦時間）
+    if (!isAdmin(userEmail)) {
+      await syncTrustedServerTime(true);
+      const periodStatus = checkRegistrationPeriodStatus();
+      if (!periodStatus.isOpen) {
+        setErrorMsg(`🛑【大會安全防護攔截】目前非報名開放期間（${periodStatus.message}），系統已禁止註冊！`);
+        return;
+      }
     }
 
     setIsSubmitting(true);

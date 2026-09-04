@@ -45,7 +45,7 @@ export interface AuditLog {
   userId: string;
   email: string;
   schoolName: string;
-  actionType: 'UPLOAD' | 'UPLOAD_FAILED' | 'DELETE' | 'REGISTER' | 'LOGIN' | 'ADMIN_ADD' | 'ADMIN_REMOVE' | 'ADMIN_RESET' | 'USER_UPDATE' | 'ADMIN_UPDATE_USER' | 'ADMIN_DELETE_USER';
+  actionType: 'UPLOAD' | 'UPLOAD_FAILED' | 'DELETE' | 'REGISTER' | 'LOGIN' | 'ADMIN_ADD' | 'ADMIN_REMOVE' | 'ADMIN_RESET' | 'USER_UPDATE' | 'ADMIN_UPDATE_USER' | 'ADMIN_DELETE_USER' | 'CONFIG_UPDATE';
   detail: string;
 }
 
@@ -72,5 +72,14 @@ export interface UploadSlotConfig {
   accept: string;
   targetName: string;
   exts: string[];
+}
+
+export interface RegistrationPeriodConfig {
+  enabled: boolean;
+  startDate: string; // "YYYY-MM-DDTHH:mm"
+  endDate: string;   // "YYYY-MM-DDTHH:mm"
+  beforeStartMessage?: string;
+  afterEndMessage?: string;
+  contactInfo?: string;
 }
 
